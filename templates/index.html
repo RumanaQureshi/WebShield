@@ -1,0 +1,213 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebShield | Website Security Scanner</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f2f5fa;
+            color: #17243b;
+        }
+        header {
+            background: #101d35;
+            color: white;
+            padding: 22px 7%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { font-size: 25px; font-weight: 800; }
+        .logo span { color: #48d6b5; }
+        .status { color: #b8f6e7; font-size: 13px; }
+        main { max-width: 1000px; margin: 40px auto; padding: 0 22px; }
+        .hero {
+            background: linear-gradient(135deg, #172b4d, #225b7a);
+            color: white;
+            border-radius: 18px;
+            padding: 36px;
+        }
+        h1 { font-size: 32px; margin: 0 0 12px; }
+        .hero p { color: #d5e5f5; line-height: 1.7; }
+        form.scan {
+            display: flex;
+            gap: 10px;
+            margin-top: 24px;
+        }
+        input[type="url"] {
+            flex: 1;
+            min-width: 0;
+            padding: 15px;
+            border: 1px solid #d5dfeb;
+            border-radius: 9px;
+            font-size: 15px;
+        }
+        button {
+            padding: 14px 20px;
+            background: #36c9a6;
+            color: #102c39;
+            border: none;
+            border-radius: 9px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        button:hover { background: #6be4c6; }
+        .notice, .error {
+            padding: 15px;
+            border-radius: 9px;
+            margin: 20px 0;
+            line-height: 1.6;
+        }
+        .notice { background: #e3f4ff; color: #164e72; }
+        .error { background: #ffebeb; color: #9e2424; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin: 24px 0;
+        }
+        .card {
+            background: white;
+            padding: 22px;
+            border-radius: 13px;
+            box-shadow: 0 3px 14px #172b4d0a;
+        }
+        .label { color: #65748a; font-size: 13px; }
+        .value {
+            display: block;
+            font-size: 25px;
+            font-weight: 750;
+            margin-top: 10px;
+            overflow-wrap: anywhere;
+        }
+        h2 { margin-top: 32px; }
+        .check {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 18px;
+            background: white;
+            padding: 19px;
+            margin: 12px 0;
+            border: 1px solid #e4eaf2;
+            border-radius: 12px;
+        }
+        .check p { color: #65748a; line-height: 1.5; margin-bottom: 0; }
+        .badge {
+            font-size: 12px;
+            font-weight: bold;
+            padding: 7px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+        .pass { background: #d9f8e9; color: #146b43; }
+        .warn { background: #fff0d1; color: #875400; }
+        .recommendation { color: #875400 !important; margin-top: 8px; }
+        .download { margin-top: 18px; }
+        .download button { background: #172b4d; color: white; }
+        .download button:hover { background: #284a73; }
+        footer {
+            text-align: center;
+            color: #758197;
+            padding: 30px 15px;
+            font-size: 13px;
+        }
+        @media (max-width: 600px) {
+            header { padding: 18px; }
+            .hero { padding: 24px; }
+            h1 { font-size: 26px; }
+            form.scan { flex-direction: column; }
+            .summary { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div class="logo">Web<span>Shield</span></div>
+    <div class="status">● Student Security Tool</div>
+</header>
+
+<main>
+    <section class="hero">
+        <h1>Website Security Scanner</h1>
+        <p>
+            Check HTTPS and important HTTP security headers.
+            Discover common configuration gaps and learn how to improve them.
+        </p>
+        <form class="scan" method="POST" action="/">
+            <input type="url" name="url"
+                placeholder="https://example.com"
+                value="{{ request.form.get('url', '') }}" required>
+            <button type="submit">Scan Website →</button>
+        </form>
+    </section>
+
+    <div class="notice">
+        <strong>Educational use:</strong> Scan only websites you own or have
+        permission to assess. This tool checks basic HTTP configuration;
+        it does not perform a complete security audit.
+    </div>
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if report %}
+        <h2>Scan Summary</h2>
+        <div class="summary">
+            <div class="card">
+                <span class="label">HTTP Response</span>
+                <span class="value">{{ report.status_code }}</span>
+            </div>
+            <div class="card">
+                <span class="label">HTTPS</span>
+                <span class="value">
+                    {{ "Enabled" if report.https else "Not detected" }}
+                </span>
+            </div>
+            <div class="card">
+                <span class="label">Headers Present</span>
+                <span class="value">{{ report.passed }}/{{ report.total }}</span>
+            </div>
+        </div>
+
+        <h2>Security Header Results</h2>
+        {% for item in report.results %}
+            <div class="check">
+                <div>
+                    <strong>{{ item.name }}</strong>
+                    <p>{{ item.description }}</p>
+                    {% if not item.present %}
+                        <p class="recommendation">
+                            <strong>Recommendation:</strong>
+                            {{ item.recommendation }}
+                        </p>
+                    {% endif %}
+                </div>
+                <span class="badge {{ 'pass' if item.present else 'warn' }}">
+                    {{ "PRESENT" if item.present else "MISSING" }}
+                </span>
+            </div>
+        {% endfor %}
+
+        <p style="color:#65748a; font-size:13px; overflow-wrap:anywhere;">
+            Final URL checked: {{ report.final_url }}
+        </p>
+
+        <form class="download" method="POST" action="/download-report">
+            <input type="hidden" name="url" value="{{ report.url }}">
+            <button type="submit">Download Security Report ↓</button>
+        </form>
+    {% endif %}
+</main>
+
+<footer>
+    WebShield · Educational Cybersecurity Project · Built with Python and Flask
+</footer>
+</body>
+</html>
