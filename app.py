@@ -1,9 +1,12 @@
 
-from flask import Flask, render_template, request, make_response
-import requests
 import csv
 import io
-from urllib.parse import urlparse
+import ipaddress
+import socket
+from urllib.parse import urlparse, urljoin
+
+import requests
+from flask import Flask, render_template, request, make_response
 
 app = Flask(__name__)
 
@@ -31,7 +34,7 @@ SECURITY_HEADERS = {
 }
 
 
-def scan_website(url):
+def validate_public_url(url):
     parsed = urlparse(url)
 
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -40,17 +43,63 @@ def scan_website(url):
     if parsed.username or parsed.password:
         raise ValueError("URLs containing embedded credentials are not allowed.")
 
+    if parsed.port and not (1 <= parsed.port <= 65535):
+        raise ValueError("Invalid port.")
+
     host = parsed.hostname.lower()
+
     if host == "localhost" or host.endswith(".localhost"):
         raise ValueError("Localhost addresses are not supported.")
+
+    try:
+        addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise ValueError("Could not resolve this website address.")
+
+    if not addresses:
+        raise ValueError("No IP address was found for this website.")
+
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if not ip.is_global:
+            raise ValueError(
+                "This website resolves to a non-public IP address and is blocked."
+            )
+
+    return url
+
+
+def scan_website(url):
+    validate_public_url(url)
 
     try:
         response = requests.get(
             url,
             timeout=10,
-            allow_redirects=True,
-            headers={"User-Agent": "WebShield-Student-Scanner/1.0"}
+            allow_redirects=False,
+            headers={"User-Agent": "WebShield-Student-Scanner/1.0"},
+            stream=True
         )
+
+        if 300 <= response.status_code < 400:
+            response.close()
+            location = response.headers.get("Location")
+            if location:
+                next_url = urljoin(url, location)
+                validate_public_url(next_url)
+                response = requests.get(
+                    next_url,
+                    timeout=10,
+                    allow_redirects=False,
+                    headers={"User-Agent": "WebShield-Student-Scanner/1.0"},
+                    stream=True
+                )
+
+        response_headers = dict(response.headers)
+        status_code = response.status_code
+        final_url = response.url
+        response.close()
+
     except requests.RequestException:
         raise ValueError(
             "Could not reach the website. Check the URL and internet connection."
@@ -59,7 +108,7 @@ def scan_website(url):
     results = []
 
     for header, details in SECURITY_HEADERS.items():
-        present = header in response.headers
+        present = header in response_headers
         results.append({
             "name": header,
             "present": present,
@@ -69,9 +118,9 @@ def scan_website(url):
 
     return {
         "url": url,
-        "final_url": response.url,
-        "status_code": response.status_code,
-        "https": urlparse(response.url).scheme == "https",
+        "final_url": final_url,
+        "status_code": status_code,
+        "https": urlparse(final_url).scheme == "https",
         "results": results,
         "passed": sum(item["present"] for item in results),
         "total": len(results)
@@ -101,6 +150,9 @@ def index():
 def download_report():
     url = request.form.get("url", "").strip()
 
+    if not url:
+        return "Please enter a website URL.", 400
+
     try:
         report = scan_website(url)
     except ValueError as exc:
@@ -113,7 +165,9 @@ def download_report():
     writer.writerow(["Website", report["url"]])
     writer.writerow(["Final URL", report["final_url"]])
     writer.writerow(["HTTP Status", report["status_code"]])
-    writer.writerow(["HTTPS", "Enabled" if report["https"] else "Not detected"])
+    writer.writerow([
+        "HTTPS", "Enabled" if report["https"] else "Not detected"
+    ])
     writer.writerow([])
     writer.writerow([
         "Security Header", "Status", "Description", "Recommendation"
@@ -136,4 +190,4 @@ def download_report():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=False, port=5001)
